@@ -1,0 +1,135 @@
+https://github.com/mramsudheer/shared-library-test.git
+JENKINS MASTER
+==============
+ (INSTALLED VIA SHELL SRCIPT)
+sudo curl -o /etc/yum.repos.d/jenkins.repo     https://pkg.jenkins.io/rpm-stable/jenkins.repo
+sudo dnf install fontconfig java-21-openjdk -y
+sudo dnf install jenkins -y
+sudo systemctl daemon-reload
+sudo systemctl enable jenkins
+sudo systemctl restart jenkins
+
+<publicip>:8080
+
+PASSWORD:
+cat /var/lib/jenkins/secrets/initialAdminPassword
+
+INSTALL PLUGINS
+1. Pipeline stage view
+2. Pipeline Utility Steps
+3. AWS Credentials
+4. Pipeline: AWS Steps
+5. SonarQube Scanner
+
+JENKINS AGENT  (INSTALLED VIA SHELL SRCIPT)
+=============
+Create with 50GB and install java
+sudo dnf install fontconfig java-21-openjdk -y
+
+sudo lsblk
+sudo growpart /dev/nvme0n1 4
+sudo lvextend -L +10G /dev/mapper/RootVG-homeVol
+sudo lvextend -L +10G /dev/mapper/RootVG-rootVol
+sudo lvextend -L +10G /dev/mapper/RootVG-varVol
+sudo xfs_growfs /
+sudo xfs_growfs /home
+sudo xfs_growfs /var
+df -hT
+
+# Install npm in agent  (INSTALLED VIA SHELL SRCIPT)
+dnf module disable nodejs -y
+dnf module enable nodejs:20 -y
+dnf install nodejs -y
+
+Install Docker in agent  (INSTALLED VIA SHELL SRCIPT)
+# Docker
+dnf -y install dnf-plugins-core
+dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+dnf install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
+systemctl start docker
+systemctl enable docker
+usermod -aG docker ec2-user
+Logoff and Login
+
+CREATING A NODE
+===============
+In Jenkins Master URL -> your project -> settings -> Nodes -> roboshop
+Number of executors:3
+Remote root directory: /home/ec2-user/jenkins-agent (It automatically creates in NODE)
+Labels: ROBOSHOP
+Usage: Only build Jobs with label expressions matching this Node
+Launch method: Launch agents via SSH
+Host: <Agent Private IP>
+Credentials:
+    1. ID:ssh-auth (ssh-auth)
+    2. AWS Credentials (aws_credts)
+    
+Host Key Verification Strategy:Non verifying Verification Strategy
+Availability: Keep this agent online as mush as possible
+
+DISCONNECT AND CONNECT AGAIN THE NODE IF YOU SEE THE FOLLOWING ERROR
++ docker build -t catalogue:1.0.0 .
+ERROR: permission denied while trying to connect to the docker API at unix:///var/run/docker.sock
+
+CREATE A FOLDER
+===============
+In Jenkins Master URL -> New Item -> Folder(ROBOSHOP)
+in this folder -> (creating a project)New Item -> Mulitibranch Pipeline(catalogue) -> Configure -> Branch Sources-> Git
+    
+    Project Repository:https://github.com/mramsudheer/catalogue-unit-tests.git
+    Build Configuration:
+        Mode: by Jenkinsfile
+        Script Path:Jenkinsfile
+    Branch Specifier: main(Not required for multibranch pipeline, it will scan all the branches and creates the pipelines for ll the branches which are having jenkinsfile)
+apply, save and build
+
+NOW CREATE ECR AND PUSH THE IMAGE
+=============================
+We can create using Terraform or From console
+    Amazon ECR -> Private registry ->Repositories -> Create private repository
+    General settings -> Repository name -> roboshop/catalogue
+        Image tag settings: Mutable
+    To see the Push commands
+        Amazon ECR ->Private registry->Repositories->roboshop/catalogue-> View Push commands
+
+DEPENDABOT
+==========
+git url -> settings -> Advanced Security -> Dependabot(Enable) and Dependency graph (Enable)
+            Security and quality -> Dependabot alerts -> view Dependabot alerts 
+***********************************************************************************************
+TO GENERATE TOKEN
+git url -> settings(user navigation menu-on top right side) -> Developer Settings -> personal access tokens -> 
+            Fine-grained tokens -> Generate new token
+                Token name: jenkins-scan
+                Repository access:  Only select repositories)
+                Permissions -> Add Permissions -> Select repository permissions:Dependabot alerts(Read Only), Commit Statuses(Read and Write)
+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
+
+Create a Credential:secret text with generated tocken abv()
+In jenkins URL, settings -> Credentials - secret text -> github-token(with abv token)
+
+curl -L \
+  -H "Accept: application/vnd.github+json" \
+  -H "Authorization: Bearer <ABV OKEN>" \
+  -H "X-GitHub-Api-Version: 2026-03-10" \
+  https://api.github.com/repos/mramsudheer/catalogue/dependabot/alerts
+***********************************************************************************************  
+INSTALL TRIVY in JENKINS AGENT (INSTALLED VIA SHELL SRCIPT)
+===========
+curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.70.0
+in Agent
+
+for just checking:
+docker images
+trivy image <imagename>
+
+trivy image \
+--scanners vuln \
+--pkg-types os \
+--vuln-type os \
+--severity HIGH,MEDIUM,CRITICAL \
+--format table \
+--exit-code 1 \
+--quiet \
+424848769611.dkr.ecr.us-east-1.amazonaws.com/roboshop/catalogue:1.0.0
+
